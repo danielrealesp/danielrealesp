@@ -4,7 +4,7 @@ title: About
 permalink: /about/
 ---
 
-My name is Daniel Reales, I am a **senior year Computer Science and Economics student** at Universidad de Los Andes in Bogotá, Colombia. I am passionate about NLP and functional programming. I have previously worked as a **Research Assistant** on a project to improve translation of educational material in order to enhance availability and as a **Junior Software Engineer** at [Quantil](https://quantil.co/) - a data science consultancy company.
+My name is Daniel Reales, I am a **senior year Computer Science and Economics student** at Universidad de Los Andes in Bogotá, Colombia. I am passionate about NLP and functional programming. I have previously worked as a **Research Assistant** at Universidad de los Andes working on NLP applications to education and previously as a **Junior Software Engineer** at [Quantil](https://quantil.co/) - a data science consultancy company.
 
 You can find me on Github
 [![GitHub](https://i.stack.imgur.com/tskMh.png) GitHub](https://github.com/danielrealesp)
