@@ -43,7 +43,7 @@ Now, lets generate the ast and print its contents:
 
 This outputs the following structure:
 
-<img src="/assets/images/ast-dump.png" style="width: 60%; display: block; margin-left: auto; margin-right: auto">
+<img src="https://github.com/danielrealesp/danielrealesp/blob/main/assets/images/ast-dump.png?raw=true" style="width: 60%; display: block; margin-left: auto; margin-right: auto">
 <div style="text-align: center">
   <em>Fig 1. Dump of the AST</em>
 </div>
@@ -51,7 +51,7 @@ This outputs the following structure:
 
 At first glance this may not look as a tree. Let's reduce the noise in the output and generate a diagram for what we have until now: 
 
-<img src="/assets/images/ast-tree-diagram.png" style="width: 80%; display: block; margin-left: auto; margin-right: auto">
+<img src="https://github.com/danielrealesp/danielrealesp/blob/main/assets/images/ast-tree-diagram.png?raw=true" style="width: 80%; display: block; margin-left: auto; margin-right: auto">
 <div style="text-align: center">
   <em>Fig 2. Labeled tree diagram</em>
 </div>
