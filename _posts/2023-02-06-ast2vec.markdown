@@ -1,0 +1,179 @@
+---
+layout: post
+title:  "ast2vec: Mapping Python Programs to Vectors using Recursive Neural Encodings"
+date:   2023-02-06 09:38:28 -0500
+categories: code-representation ast
+---
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+
+In this post we will explore the ast2vec algorithm proposed by [Paaßen *et al*. (2021)](https://files.eric.ed.gov/fulltext/EJ1320641.pdf). This autoencoder model is a particular instance of the method proposed by [Paaßen *et al*. (2021)](https://link.springer.com/article/10.1007/s10994-022-06223-7) whose central idea is to decode trees by following a *tree grammar*. The ast2vec algorithm receives a Python program's abstract syntax tree[^1] and encodes it recursively in a bottom-up fashion starting from the leafs all the way to the root. For the decoding process the algorithm receives a vector that represents the embedding of the program's ast and, given a decoding function defined for each of the syntactic elements of the Python's grammar, the algorithm selects the most likely next syntactic element and iterates this process over the child nodes for the selected element of the syntax.
+
+> Note: All of the Python source will be automatically generated from the Hylang code contained in this post and can be found on Github: [danielrealesp](https://github.com/danielrealesp).
+
+## 1. Understanding the Python AST Library
+
+Before delving into the encoding and decoding processes of the ast2vec algorithm, we will briefly illustrate the representation that the ast2vec algorithm expects. If you are already familiar with the library, you may skip to the next section.
+
+First, let import the ast module from the Python standard library[^2] and generate a sample program to work with.
+
+**Hy**
+
+{% highlight clojure%}
+
+(import ast)
+(require hyrule [->])
+
+(setv program "
+def hello_world():
+    text = \"Hello World\"
+    print(text)")
+{% endhighlight %}
+
+Now, lets generate the ast and print its contents:
+
+**Hy**
+
+{% highlight clojure%}
+(-> (.parse ast program)
+    (ast.dump :indent 4) 
+    print)
+{% endhighlight %}
+
+This outputs the following structure:
+
+<img src="/assets/images/ast-dump.png" style="width: 60%; display: block; margin-left: auto; margin-right: auto">
+<div style="text-align: center">
+  <em>Fig 1. Dump of the AST</em>
+</div>
+<br>
+
+At first glance this may not look as a tree. Let's reduce the noise in the output and generate a diagram for what we have until now: 
+
+<img src="/assets/images/ast-tree-diagram.png" style="width: 80%; display: block; margin-left: auto; margin-right: auto">
+<div style="text-align: center">
+  <em>Fig 2. Labeled tree diagram</em>
+</div>
+<br>
+
+As we can see, each of the nodes has a label corresponding to a symbol from the alphabet of the Abstract Grammar (you can consult the grammar [here](https://docs.python.org/3/library/ast.html)).
+
+The authors of the ast2vec algorithm provided a collection of utility functions to manipulate this ast into a tree representation that their implementation can use for the encoding process[^3]. We will clone this repository and use the *ast_to_tree* function from the *python_ast_utils.py* file:
+
+**Hy**
+
+{% highlight clojure%}
+(import python_ast_utils [ast_to_tree])
+(import ast)
+
+(setv tree (ast_to_tree (.parse ast program)))
+tree
+;;#=> Module(FunctionDef(arguments, Assign(Name, Constant), Expr(Call(Name, Name))))
+{% endhighlight %}
+
+This is the exact representation we built in Fig 2.
+It is important to note that nor the variable names nor the function names or numbers are considered by the ast2vec algorithm. This means that, when the tree is being encoded **it uses an arbitrary initial vector for each of the aforementioned leaves of the tree.**
+
+## 2. Encoding: Recursive computation on the AST
+
+### 2.1 General Method
+
+Now that we have an understanding of how programs are represented as trees and what information the ast2vec algorithm considers, let's dive into the recursive encoding process. In order to encode the tree whose **root syntactic element is \\(x\\)**, the authors set \\( \hat{y}_{k}\\) to be the k-th child node subtree and define the following encoding function: 
+
+\begin{equation}
+\phi(x(\hat{y_1}, ..., \hat{y_K})) := f^x(\phi{(\hat{y_1})},...,\phi{(\hat{y_k})})
+\end{equation}
+
+There are 2 important things to keep in mind from the above equation:
+
+1. f depends on the root syntactic element of the tree
+2. The encoding function is defined recursively
+
+Let's illustrate the recursive nature with a simpler program than the one defined on the previous section.
+
+{% highlight clojure%}
+(setv program2 "print(\"Hello World\")")
+(setv tree2 (ast_to_tree (.parse ast program2)))
+tree2
+;;=> Module(Expr(Call(Name, Constant)))
+{% endhighlight %}
+
+This means that if we wished to encode the tree of this program whose root syntactic element is *Module*, we must perform:
+
+\begin{equation}
+f^{Module}(f^{Expr}(f^{Call}(f^{Name}(),f^{Constant}())))
+\end{equation}
+
+Note that in the above equation we know beforehand, due to the grammar rules, the number of arguments each function expects depending on the root syntactic element.
+
+Leaves receive no arguments and their encoding is a constant vector (\\(f^x \in R^n\\)).
+
+### 2.2 Recursive Neural Network
+
+
+The authors define the encoding function \\(f^x\\) to be a single-layer feedforward network defined as:
+
+\begin{equation}
+f^x(\vec{y_1}, ..., \vec{y_k}) = tanh(U^x_1 \cdot \vec{y_1} + ...  + U^x_k \cdot \vec{y_k} + \vec{b^x})
+\end{equation}
+
+Where \\(U^x_k\\) are \\(n \times n\\) matrices and \\(b^x \in R^n\\). These are the parameters the model must learn.
+
+The authors mention that this is indeed a simple encoding mechanism and that one could further improve the encoding process by using more advanced neural networks (Tree-LSTMs for example).
+
+### 2.3 ast2vec Python Package
+
+Once a tree is generated, encoding it using the ast2vec package is straightforward.
+
+**Hy**
+
+{% highlight clojure%}
+(import ast2vec)
+
+(setv model (.load-model ast2vec))
+(setv encoding (.encode model tree))
+encoding
+;;#=> tensor([ 0.0015,  0.4631, -0.9099,  0.3106,...,]) ; Dim: 256
+{% endhighlight %}
+
+## 3. Decoding: Tree Grammar
+
+The decoding process starts with a vector \\(\vec{x}\\) and given a function \\(h_A\\) computes:
+
+\begin{equation}
+h_A(y|\vec{x})
+\end{equation}
+
+for every possible syntactic element y that is allowed as a production from A. The algorithm proceeds to select the most likely syntactical element (lets call it \\(x\\)). Once this decision is made it is know from the grammar the number (K) of child nodes (child subtrees) that stem from it . Therefore, K decoding functions \\(g^{x}_k : R^n \rightarrow R^n \\) are defined. These functions determine the vectors for each of the children subtrees given the parent's vector. The authors define, therefore, the decoding function \\(\psi\\) to be:
+
+\begin{equation}
+\psi(\vec{x}) = x(\psi(\vec{y_1}),...,\psi(\vec{y_k}))
+\end{equation}
+
+where \\(x = \underset{y}{\mathrm{argmax}}h_A(y\|\vec{x})\\) and \\(\vec{y_k} = g^x_k(\vec{x})\\).
+
+Decoding functions \\(g^x_k\\) are implemented also as a single-layer feedforward neural network as in section 2.2.[^4]. As for the scoring functions \\(h_A\\), they are implemented as linear layers that take n inputs and output as many elements as the grammar element \\(A\\) specifies.
+
+Let's look at an example of this process. We start with a vector \\(\vec{x}\\) that represents the encoding of the program we defined in section 2.1. This vector is fed into the \\(h_A\\) function which selects the *Module* element. Therefore, now we generate a new vector \\(\vec{y} = g^{Module}(\vec{x})\\) which is in turn going to be fed to the \\(h_A\\) function. The function selects the *Expr*. The next step is to apply the decoding function: \\(g^{Expr}(g^{Module})\\). We define a vector equal to this computation and continue the process until the leafs are reached.
+
+It is important to note that if a selected element has multiple children then two different functions are used to decode the vector and continue the process. For instance, if \\(h_A\\) computed on a vector \\(\vec{v}\\) selects the element *Call* then we compute both \\(g^{Call}_1(\vec{v})\\) and \\(g^{Call}_2(\vec{v})\\) because the *Call* element, as per the grammar, expects 2 children.
+
+Finally, lets perform a decoding operation using the Python ast2vec package.
+
+{% highlight clojure%}
+(setv encoding2 (.encode model tree2))
+(setv decoded (.decode model encoding2))
+decoded
+;;=> Module(Expr(Call(Name, Constant)))
+{% endhighlight %}
+
+As we can see it recovers the original tree succesfully 🥳. 
+
+## Notes
+[^1]: Abstract Syntax Trees are built with the [ast](https://docs.python.org/3/library/ast.html) module from the language standard library.
+[^2]: For a good introduction to the ast library see Ch 9 of the [Serious Python book](https://serious-python.com/). The chapter also features an interview with the creator of the Hylang language (a LISP that features seamless interoperability with the Python ecosystem).
+
+[^3]: The full code for the implementation of the algorithm can be found at: [https://gitlab.com/bpaassen/ast2vec/-/tree/master/](https://gitlab.com/bpaassen/ast2vec/-/tree/master/)
+
+[^4]: Lists are treated differently in both the encoding and decoding process. List children are not decoded using feedforward neural networks but rather with gated recurrent units. In the encoding process, list elements are encoded as the sum of the elements of the list. The empty list is encoded as the zero vector.
